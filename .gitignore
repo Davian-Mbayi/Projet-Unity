@@ -1,0 +1,49 @@
+# Unity generated files
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+MemoryCaptures/
+
+# Visual Studio / Rider
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Package manager
+Packages/manifest.json
+Packages/packages-lock.json
+
+# Unity cache server
+CacheServer/
+
+# Asset meta files and other generated files
+*.booproj
+*.tmp
+*.bak
+*.backup
+*.orig
+*.log
+
+# Uncomment if you have log files in the project root
+# *.log
+
+# Ignore plugin debugging files
+sysinfo.txt
+
+# Keep README and project sources
+!README.md
