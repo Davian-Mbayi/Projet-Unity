@@ -1,107 +1,121 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using TMPro;
 
-// A coller sur un GameObject vide "GameManager"
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
 
-    [Header("UI HUD")]
-    public TMP_Text scoreText;
-    public TMP_Text livesText;          // affichera "Vies : 3"
+    [Header("Interface (UI)")]
+    public TMP_Text coinCounterText;
+    public TMP_Text alertMessageText;
+    public TMP_Text introText;
 
-    [Header("UI Game Over / Victoire")]
-    public GameObject gameOverPanel;
-    public GameObject winPanel;
-    public TMP_Text finalScoreText;
+    [Header("Menu Accueil")]
+    public GameObject welcomePanel;
+    public GameObject startButton;
 
-    [Header("Victoire")]
-    public int totalCoinsToWin = 0;     // mis a jour automatiquement au Start
+    [Header("Audio")]
+    public AudioSource gameAudioSource;
+    public AudioClip coinPickupSound;
+    public AudioClip exitOpenSound;
 
-    private int score = 0;
+    private int totalCoinsToFind;
     private int coinsCollected = 0;
-    private bool isGameOver = false;
+    private GameObject exitWall;
+
+    private bool gameStarted = false;
+    private bool messageHidden = false;
 
     void Awake()
     {
-        Instance = this;
+        if (Instance == null) {
+            Instance = this;
+        } else {
+            Destroy(gameObject);
+        }
     }
 
     void Start()
     {
-        Time.timeScale = 1f;
-        if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if (winPanel != null) winPanel.SetActive(false);
-
-        // Compte automatiquement le nombre de pieces dans la scene
-        totalCoinsToWin = GameObject.FindGameObjectsWithTag("Coin").Length;
-
-        UpdateScoreUI();
+        if (welcomePanel != null) welcomePanel.SetActive(true);
+        if (startButton != null) startButton.SetActive(true);
+        if (introText != null) introText.gameObject.SetActive(false);
+        
+        Time.timeScale = 0f;
     }
 
-    public void AddScore(int amount)
+    // Appelée par PlayerController dès que le joueur bouge
+    public void OnPlayerMoved()
     {
-        if (isGameOver) return;
-        score += amount;
+        if (gameStarted && !messageHidden)
+        {
+            if (introText != null) introText.gameObject.SetActive(false);
+            messageHidden = true;
+        }
+    }
+
+    public void StartGame()
+{
+    // 1. Cacher d'abord le panel (qui contient IntroText)
+    if (startButton != null) startButton.SetActive(false);
+    if (welcomePanel != null) welcomePanel.SetActive(false);
+
+    // 2. Afficher IntroText ensuite (il échappe au SetActive du parent)
+    if (introText != null) introText.gameObject.SetActive(true);
+
+    Time.timeScale = 1f;
+    gameStarted = true;
+}
+
+    public void SetupLevel(int totalCoins, GameObject exitObject)
+    {
+        totalCoinsToFind = totalCoins;
+        exitWall = exitObject;
+        coinsCollected = 0;
+
+        if (alertMessageText != null) alertMessageText.text = "";
+        UpdateUI();
+    }
+
+    public void AddCoin()
+    {
         coinsCollected++;
-        UpdateScoreUI();
+        UpdateUI();
 
-        // Toutes les pieces ramassees = victoire
-        if (totalCoinsToWin > 0 && coinsCollected >= totalCoinsToWin)
+        if (gameAudioSource != null && coinPickupSound != null)
         {
-            Win();
+            gameAudioSource.PlayOneShot(coinPickupSound);
+        }
+
+        CheckWinCondition();
+    }
+
+    private void CheckWinCondition()
+    {
+        if (coinsCollected >= totalCoinsToFind)
+        {
+            if (exitWall != null)
+            {
+                Destroy(exitWall);
+                
+                if (alertMessageText != null)
+                {
+                    alertMessageText.text = "La sortie est ouverte ! Félicitations !";
+                }
+
+                if (gameAudioSource != null && exitOpenSound != null)
+                {
+                    gameAudioSource.PlayOneShot(exitOpenSound);
+                }
+            }
         }
     }
 
-    void UpdateScoreUI()
+    private void UpdateUI()
     {
-        if (scoreText != null) scoreText.text = "Score : " + score;
-    }
-
-    public void UpdateLivesUI(int current, int max)
-    {
-        if (livesText != null)
+        if (coinCounterText != null)
         {
-            string hearts = "";
-            for (int i = 0; i < current; i++) hearts += "<3 ";
-            livesText.text = "Vies : " + hearts;
+            coinCounterText.text = $"Pièces : {coinsCollected} / {totalCoinsToFind}";
         }
-    }
-
-    public void GameOver()
-    {
-        if (isGameOver) return;
-        isGameOver = true;
-
-        if (gameOverPanel != null) gameOverPanel.SetActive(true);
-        if (finalScoreText != null) finalScoreText.text = "Score : " + score;
-
-        Time.timeScale = 0f;
-    }
-
-    void Win()
-    {
-        if (isGameOver) return;
-        isGameOver = true;
-
-        if (winPanel != null) winPanel.SetActive(true);
-        if (finalScoreText != null) finalScoreText.text = "Score : " + score;
-
-        Time.timeScale = 0f;
-    }
-
-    // Bouton "Rejouer"
-    public void Replay()
-    {
-        Time.timeScale = 1f;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
-    }
-
-    // Bouton "Menu"
-    public void GoToMenu()
-    {
-        Time.timeScale = 1f;
-        SceneManager.LoadScene("MainMenu");
     }
 }

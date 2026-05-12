@@ -1,12 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
- 
-/// <summary>
-/// Génère un labyrinthe procédural qui s'adapte automatiquement à la surface du sol
-/// et garantit un espacement suffisant pour que le joueur puisse passer.
-/// Basé sur l'algorithme Recursive Backtracking.
-/// </summary>
+
 public class MazeGeneratorAdaptive : MonoBehaviour
 {
     // ─────────────────────────────────────────────────────────────────────────
@@ -25,7 +20,7 @@ public class MazeGeneratorAdaptive : MonoBehaviour
     public float playerWidth = 0.8f;
  
     [Tooltip("Marge supplémentaire autour du joueur pour le confort de déplacement (en unités Unity).")]
-    public float corridorMargin = 0.2f;
+    public float corridorMargin = 0.4f;
  
     [Header("Murs")]
     [Tooltip("Prefab représentant un mur. Son pivot doit être au centre.")]
@@ -44,37 +39,29 @@ public class MazeGeneratorAdaptive : MonoBehaviour
  
     [Header("Debug")]
     public bool showGizmos = true;
- 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  DONNÉES PRIVÉES
-    // ─────────────────────────────────────────────────────────────────────────
- 
+    [Header("Mécanique de Jeu (Pièces & Sortie)")]
+    [Tooltip("Le prefab de la pièce (doit contenir le script Coin)")]
+    public GameObject coinPrefab;
+    [Tooltip("Nombre de pièces à générer dans le labyrinthe")]
+    public int totalCoinsToSpawn = 5;
+    
+
     private int[,] maze;          // 1 = mur, 0 = couloir
     private int gridWidth;        // Nombre de colonnes de la grille
     private int gridDepth;        // Nombre de lignes   de la grille
     private float cellSize;       // Taille d'une cellule = largeur d'un couloir
     private Vector3 originOffset; // Coin bas-gauche du labyrinthe dans le monde
- 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  DÉMARRAGE
-    // ─────────────────────────────────────────────────────────────────────────
- 
+    private GameObject exitWallObject;
+
     void Start()
     {
         ComputeGridParameters();
         GenerateMazeData();
         if (createEntryExit) OpenEntryAndExit();
         DrawMaze3D();
+        SpawnCoins();
     }
- 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  CALCUL DES PARAMÈTRES DE GRILLE
-    // ─────────────────────────────────────────────────────────────────────────
- 
-    /// <summary>
-    /// Déduit la taille de cellule et les dimensions de la grille à partir
-    /// du sol de référence et de la taille du joueur.
-    /// </summary>
+
     void ComputeGridParameters()
     {
         // 1. Récupérer la taille physique du sol
@@ -114,10 +101,6 @@ public class MazeGeneratorAdaptive : MonoBehaviour
         originOffset = floorCenter - new Vector3(totalWidth / 2f, 0f, totalDepth / 2f);
     }
  
-    // ─────────────────────────────────────────────────────────────────────────
-    //  GÉNÉRATION DES DONNÉES
-    // ─────────────────────────────────────────────────────────────────────────
- 
     void GenerateMazeData()
     {
         maze = new int[gridWidth, gridDepth];
@@ -130,62 +113,74 @@ public class MazeGeneratorAdaptive : MonoBehaviour
         // Creuser depuis (1,1)
         CarvePath(1, 1);
     }
- 
-    /// <summary>
-    /// Algorithme Recursive Backtracking (DFS) – creuse des couloirs.
-    /// </summary>
-    void CarvePath(int x, int z)
+
+    void CarvePath(int startX, int startZ)
     {
-        maze[x, z] = 0;
+        // On initialise notre propre pile
+        Stack<Vector2Int> stack = new Stack<Vector2Int>();
+        
+        // On marque le point de départ comme un couloir et on l'ajoute à la pile
+        maze[startX, startZ] = 0;
+        stack.Push(new Vector2Int(startX, startZ));
  
-        int[] directions = { 1, 2, 3, 4 };
-        Shuffle(directions);
- 
-        foreach (int dir in directions)
+        // Tant que notre pile n'est pas vide, on continue de creuser
+        while (stack.Count > 0)
         {
-            int nextX = x, nextZ = z;
-            int midX  = x, midZ  = z;
+            Vector2Int current = stack.Peek(); // On regarde la cellule actuelle
+            int x = current.x;
+            int z = current.y;
  
-            switch (dir)
+            int[] directions = { 1, 2, 3, 4 };
+            Shuffle(directions);
+ 
+            bool carvedNewPath = false;
+ 
+            // On cherche un voisin valide vers lequel creuser
+            foreach (int dir in directions)
             {
-                case 1: nextZ = z + 2; midZ = z + 1; break; // Haut
-                case 2: nextZ = z - 2; midZ = z - 1; break; // Bas
-                case 3: nextX = x + 2; midX = x + 1; break; // Droite
-                case 4: nextX = x - 2; midX = x - 1; break; // Gauche
+                int nextX = x, nextZ = z;
+                int midX  = x, midZ  = z;
+ 
+                switch (dir)
+                {
+                    case 1: nextZ = z + 2; midZ = z + 1; break; // Haut
+                    case 2: nextZ = z - 2; midZ = z - 1; break; // Bas
+                    case 3: nextX = x + 2; midX = x + 1; break; // Droite
+                    case 4: nextX = x - 2; midX = x - 1; break; // Gauche
+                }
+ 
+                bool inBounds = nextX > 0 && nextX < gridWidth - 1
+                             && nextZ > 0 && nextZ < gridDepth - 1;
+ 
+                // Si la prochaine case est un mur intact
+                if (inBounds && maze[nextX, nextZ] == 1)
+                {
+                    // On casse le mur intermédiaire et on marque la nouvelle cellule
+                    maze[midX, midZ] = 0;
+                    maze[nextX, nextZ] = 0;
+                    
+                    // On avance en ajoutant cette nouvelle position sur le dessus de la pile
+                    stack.Push(new Vector2Int(nextX, nextZ));
+                    carvedNewPath = true;
+                    break; // On sort du foreach pour explorer cette nouvelle cellule au prochain tour du while
+                }
             }
  
-            bool inBounds = nextX > 0 && nextX < gridWidth - 1
-                         && nextZ > 0 && nextZ < gridDepth - 1;
- 
-            if (inBounds && maze[nextX, nextZ] == 1)
+            // Si on n'a trouvé aucun voisin valide (cul-de-sac)
+            if (!carvedNewPath)
             {
-                maze[midX, midZ] = 0;
-                CarvePath(nextX, nextZ);
+                // On retire la cellule actuelle de la pile pour revenir en arrière (Backtrack)
+                stack.Pop();
             }
         }
     }
  
-    // ─────────────────────────────────────────────────────────────────────────
-    //  ENTRÉE / SORTIE
-    // ─────────────────────────────────────────────────────────────────────────
  
-    void OpenEntryAndExit()
-    {
-        // Entrée : bord Sud (z = 0), première colonne couloir
-        maze[1, 0] = 0;
- 
-        // Sortie : bord Nord (z = gridDepth-1), dernière colonne couloir
-        maze[gridWidth - 2, gridDepth - 1] = 0;
-    }
- 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  CONSTRUCTION 3D
-    // ─────────────────────────────────────────────────────────────────────────
- 
-    /// <summary>
-    /// Instancie et met à l'échelle les murs pour correspondre exactement
-    /// à la grille calculée.
-    /// </summary>
+   void OpenEntryAndExit()
+{
+    maze[gridWidth - 2, gridDepth - 1] = 1; 
+}
+
     void DrawMaze3D()
     {
         // On regroupe tous les murs sous un parent pour garder la hiérarchie propre
@@ -237,14 +232,18 @@ public class MazeGeneratorAdaptive : MonoBehaviour
                 GameObject wall = Instantiate(wallPrefab, worldPos, rot, mazeParent.transform);
                 wall.transform.localScale = scale;
                 wall.name = $"Wall_{x}_{z}";
+
+                // --- NOUVEAU : Sauvegarder le mur de sortie ---
+                // La sortie prévue est au bord Nord, sur l'avant-dernière colonne
+                if (x == gridWidth - 2 && z == gridDepth - 1)
+                {
+                    wall.name = "Exit_Door";
+                    exitWallObject = wall;
+                }
             }
         }
+        StaticBatchingUtility.Combine(mazeParent);
     }
-
-    /// <summary>
-    /// Calcule la position réelle sur un axe en fonction de l'indice logique,
-    /// en séparant proprement l'épaisseur des murs de la largeur des couloirs.
-    /// </summary>
     float GetPhysicalCoordinate(int index)
     {
         int wallsBefore = (index + 1) / 2;
@@ -261,9 +260,6 @@ public class MazeGeneratorAdaptive : MonoBehaviour
         return position;
     }
  
-    /// <summary>
-    /// Convertit des coordonnées de grille (x, z) en position mondiale Unity.
-    /// </summary>
     Vector3 CellToWorld(int gx, int gz, float floorY)
     {
         // FIX 3: On utilise les vraies dimensions physiques pour calculer les coordonnées
@@ -273,10 +269,7 @@ public class MazeGeneratorAdaptive : MonoBehaviour
  
         return new Vector3(wx, wy, wz);
     }
- 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  UTILITAIRES
-    // ─────────────────────────────────────────────────────────────────────────
+
     void Shuffle(int[] array)
     {
         for (int i = 0; i < array.Length; i++)
@@ -286,10 +279,7 @@ public class MazeGeneratorAdaptive : MonoBehaviour
         }
     }
  
-    // ─────────────────────────────────────────────────────────────────────────
-    //  GIZMOS (visualisation dans l'éditeur)
-    // ─────────────────────────────────────────────────────────────────────────
- 
+
     void OnDrawGizmos()
     {
         if (!showGizmos || maze == null) return;
@@ -308,5 +298,65 @@ public class MazeGeneratorAdaptive : MonoBehaviour
                 Gizmos.DrawCube(pos, new Vector3(cellSize * 0.9f, 0.1f, cellSize * 0.9f));
             }
         }
+    }
+
+    public void SpawnCoins()
+    {
+        if (coinPrefab == null) return;
+
+        List<Vector2Int> deadEnds = new List<Vector2Int>();
+        List<Vector2Int> allEmptyCells = new List<Vector2Int>();
+
+        // 1. Analyser le labyrinthe pour trouver les culs-de-sac
+        for (int x = 1; x < gridWidth - 1; x++)
+        {
+            for (int z = 1; z < gridDepth - 1; z++)
+            {
+                if (maze[x, z] == 0) // Si c'est un couloir
+                {
+                    allEmptyCells.Add(new Vector2Int(x, z));
+
+                    // Compter les murs autour de cette case
+                    int wallCount = 0;
+                    if (maze[x + 1, z] == 1) wallCount++; // Droite
+                    if (maze[x - 1, z] == 1) wallCount++; // Gauche
+                    if (maze[x, z + 1] == 1) wallCount++; // Haut
+                    if (maze[x, z - 1] == 1) wallCount++; // Bas
+
+                    // Une impasse possède exactement 3 murs autour d'elle
+                    if (wallCount >= 3)
+                    {
+                        // On évite de placer une pièce juste sur l'entrée (1, 0)
+                        if (!(x == 1 && z == 1)) 
+                        {
+                            deadEnds.Add(new Vector2Int(x, z));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Déterminer la liste à utiliser (priorité aux culs-de-sac)
+        List<Vector2Int> validSpawnPoints = deadEnds.Count >= totalCoinsToSpawn ? deadEnds : allEmptyCells;
+        
+        int coinsToSpawn = Mathf.Min(totalCoinsToSpawn, validSpawnPoints.Count);
+        totalCoinsToSpawn = coinsToSpawn; 
+
+        float floorY = floorObject != null ? floorObject.transform.position.y : transform.position.y;
+
+        // 3. Instancier les pièces
+        for (int i = 0; i < coinsToSpawn; i++)
+        {
+            int randomIndex = Random.Range(0, validSpawnPoints.Count);
+            Vector2Int pos = validSpawnPoints[randomIndex];
+            validSpawnPoints.RemoveAt(randomIndex); 
+
+            Vector3 worldPos = CellToWorld(pos.x, pos.y, floorY);
+            worldPos.y = floorY + 1f; 
+
+        Instantiate(coinPrefab, worldPos, Quaternion.identity, this.transform);
+            
+        }
+        GameManager.Instance.SetupLevel(totalCoinsToSpawn, exitWallObject);
     }
 }
