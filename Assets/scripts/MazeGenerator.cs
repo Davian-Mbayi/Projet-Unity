@@ -39,6 +39,7 @@ public class MazeGeneratorAdaptive : MonoBehaviour
  
     [Header("Debug")]
     public bool showGizmos = true;
+    
     [Header("Mécanique de Jeu (Pièces & Sortie)")]
     [Tooltip("Le prefab de la pièce (doit contenir le script Coin)")]
     public GameObject coinPrefab;
@@ -48,7 +49,7 @@ public class MazeGeneratorAdaptive : MonoBehaviour
 
     private int[,] maze;          // 1 = mur, 0 = couloir
     private int gridWidth;        // Nombre de colonnes de la grille
-    private int gridDepth;        // Nombre de lignes   de la grille
+    private int gridDepth;        // Nombre de lignes de la grille
     private float cellSize;       // Taille d'une cellule = largeur d'un couloir
     private Vector3 originOffset; // Coin bas-gauche du labyrinthe dans le monde
     private GameObject exitWallObject;
@@ -175,11 +176,11 @@ public class MazeGeneratorAdaptive : MonoBehaviour
         }
     }
  
- 
-   void OpenEntryAndExit()
-{
-    maze[gridWidth - 2, gridDepth - 1] = 1; 
-}
+    void OpenEntryAndExit()
+    {
+        // Force la présence du mur de sortie pour qu'il puisse être détruit plus tard
+        maze[gridWidth - 2, gridDepth - 1] = 1; 
+    }
 
     void DrawMaze3D()
     {
@@ -233,17 +234,41 @@ public class MazeGeneratorAdaptive : MonoBehaviour
                 wall.transform.localScale = scale;
                 wall.name = $"Wall_{x}_{z}";
 
-                // --- NOUVEAU : Sauvegarder le mur de sortie ---
+                // --- GÉNÉRATION DYNAMIQUE DE LA SORTIE ET DU TRIGGER ---
                 // La sortie prévue est au bord Nord, sur l'avant-dernière colonne
                 if (x == gridWidth - 2 && z == gridDepth - 1)
                 {
                     wall.name = "Exit_Door";
                     exitWallObject = wall;
+
+                    // 1. On crée un cube basique via le code
+                    GameObject exitTriggerZone = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    exitTriggerZone.name = "Exit_Trigger_Zone";
+
+                    // 2. On le rend invisible et on le passe en mode Trigger
+                    Destroy(exitTriggerZone.GetComponent<MeshRenderer>()); // Supprime le visuel
+                    BoxCollider triggerCollider = exitTriggerZone.GetComponent<BoxCollider>();
+                    triggerCollider.isTrigger = true;
+
+                    // 3. On l'agrandit pour être sûr que le joueur ne le rate pas
+                    exitTriggerZone.transform.localScale = new Vector3(cellSize, wallHeight, cellSize);
+
+                    // 4. On le positionne juste derrière le mur de sortie (vers le Nord)
+                    Vector3 triggerPos = worldPos;
+                    triggerPos.z += (wallThickness + cellSize); 
+                    exitTriggerZone.transform.position = triggerPos;
+
+                    // 5. On l'attache au labyrinthe pour garder la hiérarchie propre
+                    exitTriggerZone.transform.SetParent(mazeParent.transform, true);
+
+                    // 6. On lui ajoute le script pour changer de niveau
+                    exitTriggerZone.AddComponent<ExitTrigger>();
                 }
             }
         }
         StaticBatchingUtility.Combine(mazeParent);
     }
+
     float GetPhysicalCoordinate(int index)
     {
         int wallsBefore = (index + 1) / 2;
@@ -279,7 +304,6 @@ public class MazeGeneratorAdaptive : MonoBehaviour
         }
     }
  
-
     void OnDrawGizmos()
     {
         if (!showGizmos || maze == null) return;
@@ -354,9 +378,10 @@ public class MazeGeneratorAdaptive : MonoBehaviour
             Vector3 worldPos = CellToWorld(pos.x, pos.y, floorY);
             worldPos.y = floorY + 1f; 
 
-        Instantiate(coinPrefab, worldPos, Quaternion.identity, this.transform);
-            
+            Instantiate(coinPrefab, worldPos, Quaternion.identity, this.transform);
         }
+        
+        // Appel final pour configurer l'interface avec le nombre exact de pièces
         GameManager.Instance.SetupLevel(totalCoinsToSpawn, exitWallObject);
     }
 }
